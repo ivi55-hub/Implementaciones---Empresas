@@ -12,12 +12,16 @@ main.sidebar-hidden{grid-template-columns:minmax(0,1fr)}
 .entry-section > h2,.entry-section > .heading{background-color:#e8f0f6;padding:10px 12px;border-radius:6px}
 .training-actions{display:flex;gap:5px;align-items:center}
 .training-actions button{width:36px;height:36px;padding:0;line-height:1;font-size:17px}
-#meetDialog,#githubDialog{width:min(560px,calc(100% - 32px));border:1px solid #cbd9e6;border-radius:14px;padding:22px;color:#172e46}
-#meetDialog::backdrop,#githubDialog::backdrop{background:rgba(16,44,71,.35)}
+#meetDialog,#githubDialog,#githubHistory{width:min(560px,calc(100% - 32px));border:1px solid #cbd9e6;border-radius:14px;padding:22px;color:#172e46}
+#meetDialog::backdrop,#githubDialog::backdrop,#githubHistory::backdrop{background:rgba(16,44,71,.35)}
 #meetError{color:#a22c35;margin:8px 0 0}
+#githubHistory{width:min(760px,calc(100% - 32px));max-height:85vh;overflow:auto}
+#githubHistoryList details{border-bottom:1px solid #cbd9e6;padding:12px 0}
+#githubHistoryList summary{cursor:pointer;font-weight:600}
+#githubHistoryList p,#githubHistoryList li{white-space:pre-wrap;overflow-wrap:anywhere}
 </style></head><body>
 <header><div>SAE CLOUD <span>Implementaciones</span></div><button type="button" id="toggleSidebar" class="sidebar-toggle" aria-controls="sidebar" aria-expanded="true">Ocultar panel</button></header>
-<main id="workspace"><aside id="sidebar"><div><h2>Clientes</h2><button class="primary" id="new">+ Nueva implementación</button><div id="clients"></div></div><div><button id="solutions" aria-current="false">Catálogo de soluciones</button></div><div><h3>Respaldo</h3><button id="backup">Exportar registros</button><button id="import">Importar registros</button><input id="importFile" type="file" accept=".json" hidden><small>Las fichas se guardan en este navegador.</small></div></aside><article>
+<main id="workspace"><aside id="sidebar"><div><h2>Clientes</h2><button class="primary" id="new">+ Nueva implementación</button><div id="clients"></div></div><div><button id="solutions" aria-current="false">Catálogo de soluciones</button></div><div><button type="button" id="openGithubHistory">Ver fichas en GitHub</button></div><div><h3>Respaldo</h3><button id="backup">Exportar registros</button><button id="import">Importar registros</button><input id="importFile" type="file" accept=".json" hidden><small>Las fichas se guardan en este navegador.</small></div></aside><article>
 <h1 id="title">Nueva implementación</h1><p id="githubStatus" role="status" hidden></p><div id="editor"></div><div id="notice" class="notice" role="status"></div></article></main>
 <dialog id="meetDialog" aria-labelledby="meetTitle">
 <form id="meetForm">
@@ -32,8 +36,13 @@ main.sidebar-hidden{grid-template-columns:minmax(0,1fr)}
 <h2 id="githubTitle">Conectar con GitHub</h2>
 <label>Token de acceso de GitHub<input id="githubToken" type="password" autocomplete="off" required></label>
 <p>Usa un token con permiso de lectura y escritura de Issues en <strong>registro-implementaciones-sae</strong>. Se conserva en memoria hasta que cierres o recargues la página.</p>
-<div class="actions"><button class="primary" type="submit">Guardar ficha</button><button type="button" id="cancelGithub">Cancelar</button></div>
+<div class="actions"><button class="primary" type="submit" id="githubSubmit">Guardar ficha</button><button type="button" id="cancelGithub">Cancelar</button></div>
 </form>
+</dialog>
+<dialog id="githubHistory" aria-labelledby="githubHistoryTitle">
+<div class="heading"><h2 id="githubHistoryTitle">Fichas guardadas en GitHub</h2><button type="button" id="closeGithubHistory">Cerrar</button></div>
+<p id="githubHistoryStatus" role="status"></p>
+<div id="githubHistoryList"></div>
 </dialog>
 <script>
 'use strict';
@@ -484,7 +493,7 @@ $('editor').addEventListener('click',async e=>{
  if(githubSaving)return;
  if(!data.company.trim()){message('Escribe el nombre de la empresa antes de guardar en GitHub.');return}
  if(githubToken)await saveToGithub();
- else $('githubDialog').showModal();
+ else requestGithubToken('save');
  return;
  }
  if(b.dataset.captureMeet!==undefined){captureTrainingMeet(data.cap[Number(b.dataset.captureMeet)]);return}
@@ -702,6 +711,12 @@ async function saveToGithub(){
 
 const githubDialog=$('githubDialog');
 const githubTokenInput=$('githubToken');
+let githubAction='save';
+function requestGithubToken(action){
+ githubAction=action;
+ $('githubSubmit').textContent=action==='history'?'Consultar fichas':'Guardar ficha';
+ githubDialog.showModal();
+}
 $('cancelGithub').onclick=()=>githubDialog.close();
 githubTokenInput.addEventListener('input',()=>githubTokenInput.setCustomValidity(''));
 githubDialog.addEventListener('close',()=>{
@@ -719,8 +734,96 @@ $('githubForm').onsubmit=async event=>{
  githubToken=token;
  githubTokenInput.value='';
  githubDialog.close();
- await saveToGithub();
+ if(githubAction==='history')await showGithubHistory();
+ else await saveToGithub();
 };
+
+const githubHistory=$('githubHistory');
+$('closeGithubHistory').onclick=()=>githubHistory.close();
+$('openGithubHistory').onclick=()=>{
+ if(githubToken)void showGithubHistory();
+ else requestGithubToken('history');
+};
+
+function githubHistoryRecord(issue){
+ const match=issue.body.match(/^<!-- sae-implementacion:([a-zA-Z0-9-]+) -->[\s\S]*?\n```json\n([\s\S]*?)\n```\s*$/);
+ if(!match)return null;
+ try{
+  const record=JSON.parse(match[2]);
+  return record?.id===match[1]?record:null;
+ }catch{return null}
+}
+
+function historyText(parent,tag,text){
+ const node=document.createElement(tag);
+ node.textContent=text;
+ parent.append(node);
+ return node;
+}
+
+function drawGithubHistoryIssue(issue){
+ const record=githubHistoryRecord(issue);
+ const detail=document.createElement('details');
+ const name=typeof record?.company==='string'?record.company:issue.title;
+ historyText(detail,'summary',name+' · #'+issue.number);
+ const updated=new Date(issue.updated_at).toLocaleString('es-EC');
+ historyText(detail,'p','Última actualización: '+updated);
+ const fields={
+  tax:'RUC / identificación fiscal',contact:'Contacto',agent:'Agente de implementación',to:'Para',cc:'CC',
+  solution:'Soluciones contratadas',contractedUsers:'Usuarios contratados',modules:'Módulos contratados',
+  meeting:'Reunión inicial',cutoff:'Corte de saldos',recording:'Grabación',login:'Acceso a SAE Cloud',
+  admin:'Usuario administrador',support:'Canal de soporte',hours:'Horario de atención',notes:'Acuerdos y comentarios',materials:'Materiales'
+ };
+ for(const [key,label] of Object.entries(fields)){
+  const value=record?.[key];
+  if(typeof value==='string'&&value.trim())historyText(detail,'p',label+': '+value);
+ }
+ for(const [key,label] of Object.entries(groups)){
+  if(!Array.isArray(record?.[key])||!record[key].length)continue;
+  historyText(detail,'h3',label);
+  const list=document.createElement('ul');
+  for(const activity of record[key]){
+   if(!activity||typeof activity.name!=='string')continue;
+   const summary=[activity.name,activity.status,activity.date,activity.time,activity.note,activity.meetingUrl]
+    .filter(value=>typeof value==='string'&&value.trim()).join(' · ');
+   historyText(list,'li',summary+(activity.priority?' · Prioridad':''));
+  }
+  detail.append(list);
+ }
+ const link=historyText(detail,'a','Abrir issue en GitHub');
+ link.href='https://github.com/'+githubRepo+'/issues/'+issue.number;
+ link.target='_blank';
+ link.rel='noopener noreferrer';
+ return detail;
+}
+
+let githubHistoryLoading=false;
+async function showGithubHistory(){
+ const status=$('githubHistoryStatus');
+ const list=$('githubHistoryList');
+ githubHistory.showModal();
+ if(githubHistoryLoading)return;
+ list.replaceChildren();
+ status.textContent='Consultando fichas…';
+ githubHistoryLoading=true;
+ try{
+  let count=0;
+  for(let page=1;;page++){
+   const {value:issues,next}=await githubRequest('/issues?state=all&sort=updated&direction=desc&per_page=100&page='+page);
+   for(const issue of issues){
+    if(issue.pull_request||!Number.isSafeInteger(issue.number)||!issue.body?.startsWith('<!-- sae-implementacion:'))continue;
+    list.append(drawGithubHistoryIssue(issue));
+    count++;
+   }
+   if(!next)break;
+  }
+  status.textContent=count?count+' '+(count===1?'ficha guardada':'fichas guardadas'):'Todavía no hay fichas guardadas desde esta aplicación.';
+ }catch(error){
+  status.textContent=error.message||'Ocurrió un error al consultar las fichas.';
+ }finally{
+  githubHistoryLoading=false;
+ }
+}
 
 draw();
 </script></body></html>
