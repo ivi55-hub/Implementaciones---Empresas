@@ -157,7 +157,11 @@ function fresh(){
 let catalogOpen=false;
 let data=Object.hasOwn(db.records,db.active)?db.records[db.active]:Object.values(db.records).at(-1)??null;
 let timer;
-function message(value){$('notice').textContent=value;clearTimeout(timer);timer=setTimeout(()=>$('notice').textContent='',6500)}
+function message(value,persistent=false){
+ $('notice').textContent=value;
+ clearTimeout(timer);
+ if(!persistent)timer=setTimeout(()=>$('notice').textContent='',6500);
+}
 function save(){try{localStorage.setItem(key,JSON.stringify(db));return true}catch{message('No se pudo guardar en el navegador. Exporta un respaldo.');return false}}
 const validTime=value=>/^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 function displayDate(v){return /^\d{4}-\d{2}-\d{2}$/.test(v)?v.split('-').reverse().join('/'):''}
@@ -606,18 +610,23 @@ function updateGithubStatus(){
 }
 
 async function githubRequest(path='',options={}){
- const response=await fetch(githubApi+path,{
-  method:options.method??'GET',
-  redirect:'error',
-  cache:'no-store',
-  headers:{
-   Authorization:'Bearer '+githubToken,
-   Accept:'application/vnd.github+json',
-   'Content-Type':'application/json',
-   'X-GitHub-Api-Version':'2022-11-28'
-  },
-  body:options.body===undefined?undefined:JSON.stringify(options.body)
- });
+ const method=options.method??'GET';
+ const headers={
+  Authorization:'Bearer '+githubToken,
+  Accept:'application/vnd.github+json',
+  'X-GitHub-Api-Version':'2022-11-28'
+ };
+ if(options.body!==undefined)headers['Content-Type']='application/json';
+ const step=method==='POST'?'crear el issue':method==='PATCH'?'actualizar el issue':path?'consultar los issues':'comprobar el repositorio';
+ let response;
+ try{
+  response=await fetch(githubApi+path,{
+   method,headers,redirect:'error',cache:'no-store',
+   body:options.body===undefined?undefined:JSON.stringify(options.body)
+  });
+ }catch{
+  throw new Error('El navegador no recibió respuesta de api.github.com al '+step+'. Abre la ficha directamente en GitHub Pages y verifica la conexión. Puedes reintentar con la misma ficha.');
+ }
  if(response.status===401){
   githubToken='';
   throw new Error('GitHub rechazó el token. Vuelve a ingresarlo o genera uno nuevo si expiró.');
@@ -627,7 +636,10 @@ async function githubRequest(path='',options={}){
   throw new Error('GitHub no permitió el acceso. Verifica que el token incluya el repositorio privado y permiso de escritura en Issues.');
  }
  if(!response.ok)throw new Error('GitHub respondió con un error ('+response.status+'). Intenta guardar de nuevo.');
- return {value:await response.json(),next:/rel="next"/.test(response.headers.get('Link')??'')};
+ let value;
+ try{value=await response.json()}
+ catch{throw new Error('GitHub respondió sin datos válidos al '+step+'. Reintenta con la misma ficha.')}
+ return {value,next:/rel="next"/.test(response.headers.get('Link')??'')};
 }
 
 async function findGithubIssue(record,marker){
@@ -681,7 +693,7 @@ async function saveToGithub(){
   const savedLocally=save();
   message('Ficha guardada en GitHub #'+number+'.'+(savedLocally?'':' No se pudo guardar el vínculo en este navegador.'));
  }catch(error){
-  message(error instanceof TypeError?'No se pudo confirmar el guardado. Comprueba la conexión y vuelve a intentarlo.':error.message);
+  message(error.message||'Ocurrió un error al guardar la ficha.',true);
  }finally{
   githubSaving=false;
   updateGithubStatus();
@@ -691,11 +703,19 @@ async function saveToGithub(){
 const githubDialog=$('githubDialog');
 const githubTokenInput=$('githubToken');
 $('cancelGithub').onclick=()=>githubDialog.close();
-githubDialog.addEventListener('close',()=>{githubTokenInput.value=''});
+githubTokenInput.addEventListener('input',()=>githubTokenInput.setCustomValidity(''));
+githubDialog.addEventListener('close',()=>{
+ githubTokenInput.value='';
+ githubTokenInput.setCustomValidity('');
+});
 $('githubForm').onsubmit=async event=>{
  event.preventDefault();
  const token=githubTokenInput.value.trim();
- if(!token)return;
+ if(!/^(github_pat_|ghp_)[A-Za-z0-9_]+$/.test(token)){
+  githubTokenInput.setCustomValidity('Pega solo el valor del token de acceso personal de GitHub, sin comillas ni espacios.');
+  githubTokenInput.reportValidity();
+  return;
+ }
  githubToken=token;
  githubTokenInput.value='';
  githubDialog.close();
