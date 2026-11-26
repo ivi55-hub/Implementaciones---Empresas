@@ -1,0 +1,572 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Implementaciones · SAE Cloud</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f1f5f9;color:#172e46;font:15px/1.5 system-ui,sans-serif}header{background:#102c47;color:white;padding:17px max(24px,calc((100vw - 1240px)/2));font-weight:750;letter-spacing:.04em;white-space:nowrap}header span{color:#80d8ef;font-weight:500;margin-left:14px}main{max-width:1288px;padding:24px;margin:auto;display:grid;grid-template-columns:240px minmax(0,1fr);gap:24px}aside>div,section{background:white;border:1px solid #dbe5ee;border-radius:14px;padding:20px;margin-bottom:16px}aside button{width:100%;text-align:left;margin-bottom:8px}h1,h2,h3,p{margin:0 0 12px}h1{font-size:30px}h2{font-size:20px}h3{font-size:16px}button,input,select,textarea{font:inherit;color:inherit}button{cursor:pointer;border:1px solid #cbd9e6;border-radius:8px;background:white;padding:7px 12px}button:hover,button[aria-current=true]{background:#e6f4fb}.choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:9px;margin:12px 0}.choices label{border:1px solid #dbe5ee;border-radius:8px;padding:9px;display:flex;align-items:center;gap:8px}.choices input{width:auto;margin:0}.danger{color:#a22c35}.danger:hover{background:#fff1f2}.primary,.primary:hover{background:#087197;color:white;border-color:#087197}.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}.bar:last-child{margin-bottom:0}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}label{display:block;font-size:13px;font-weight:650}input,select,textarea{width:100%;min-width:0;border:1px solid #cbd9e6;border-radius:7px;padding:7px 9px;background:#fff}textarea{resize:vertical}small,.muted{color:#4f647a}.rows{overflow:auto}.row,.row-head{display:grid;grid-template-columns:minmax(180px,1.35fr) 145px var(--time-column,) 121px minmax(155px,1fr) 64px var(--action-column,76px);gap:7px;align-items:center;min-width:var(--rows-width,746px);padding:7px 0}.row{border-top:1px solid #e5edf4}.row-head{font-size:13px;font-weight:650}.training-rows{--time-column:115px minmax(150px,1fr);--rows-width:1069px;--action-column:120px}.row-head span:last-child{text-align:center}.row input[type=checkbox]{width:auto;display:block;margin:8px auto}.row button{padding:6px 8px}.heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px}.heading h2{margin:0}.preview{background:#edf3f8;padding:12px 10px;border-radius:9px;overflow:auto}.notice{position:sticky;bottom:8px;background:#102c47;color:white;border-radius:8px;padding:8px 12px;width:max-content;max-width:100%;margin-left:auto}.notice:empty{display:none}.actions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.full{grid-column:1/-1}@media(max-width:780px){main{display:block;padding:14px}.grid{grid-template-columns:1fr}header{padding:14px}}
+header{display:flex;align-items:center;justify-content:space-between;gap:10px 16px;flex-wrap:wrap;white-space:normal}
+.sidebar-toggle{flex:none;background:#193e5b;color:#fff;border-color:#6d8da7;font-size:13px;letter-spacing:normal}
+.sidebar-toggle:hover{background:#26536f}
+main.sidebar-hidden{grid-template-columns:minmax(0,1fr)}
+.attachments ul{list-style:none;margin:0;padding:0}
+.attachments li{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e5edf4}
+.attachments li span{overflow-wrap:anywhere}
+.attachments li button{flex:none}
+.entry-section > h2,.entry-section > .heading{background-color:#e8f0f6;padding:10px 12px;border-radius:6px}
+.training-actions{display:flex;gap:5px;align-items:center}
+.training-actions button{width:36px;height:36px;padding:0;line-height:1;font-size:17px}
+#meetDialog{width:min(560px,calc(100% - 32px));border:1px solid #cbd9e6;border-radius:14px;padding:22px;color:#172e46}
+#meetDialog::backdrop{background:rgba(16,44,71,.35)}
+#meetError{color:#a22c35;margin:8px 0 0}
+</style></head><body>
+<header><div>SAE CLOUD <span>Implementaciones</span></div><button type="button" id="toggleSidebar" class="sidebar-toggle" aria-controls="sidebar" aria-expanded="true">Ocultar panel</button></header>
+<main id="workspace"><aside id="sidebar"><div><h2>Clientes</h2><button class="primary" id="new">+ Nueva implementación</button><div id="clients"></div></div><div><button id="solutions" aria-current="false">Catálogo de soluciones</button></div><div><h3>Respaldo</h3><button id="backup">Exportar registros</button><button id="import">Importar registros</button><input id="importFile" type="file" accept=".json" hidden><small>Las fichas se guardan en este navegador.</small></div></aside><article>
+<h1 id="title">Nueva implementación</h1><div id="editor"></div><div id="notice" class="notice" role="status"></div></article></main>
+<dialog id="meetDialog" aria-labelledby="meetTitle">
+<form id="meetForm">
+<h2 id="meetTitle">Enlace de Google Meet</h2>
+<label>Pega el enlace o la invitación completa<textarea id="meetText" rows="7" aria-describedby="meetError"></textarea></label>
+<p id="meetError" role="alert" hidden></p>
+<div class="actions"><button class="primary" type="submit">Guardar enlace</button><button type="button" id="cancelMeet">Cancelar</button></div>
+</form>
+</dialog>
+<script>
+'use strict';
+const key='sae-implementaciones-v1';
+const groups={base:'Información base y configuración',contable:'Requerimientos contables',cap:'Capacitaciones'};
+const catalog={
+ base:['Certificado de RUC','Correo del usuario administrador','Correos y nombres de usuarios','Logo','Plan de cuentas','Firma electrónica','Carga de clientes','Carga de proveedores','Carga de productos'],
+ contable:['Balances iniciales','Saldos iniciales de cuentas por cobrar','Saldos iniciales de cuentas por pagar','Saldos iniciales de anticipos de clientes','Saldos iniciales de anticipos a proveedores','Stock inicial','Saldos iniciales para conciliación bancaria'],
+ cap:['Flujo de ventas / punto de venta','Flujo de compras','Bancos','Tributación','Contabilidad']
+};
+const pick=(group,indexes)=>indexes.map(i=>catalog[group][i]);
+const templates={
+ 'ERP Básico':{...catalog,modules:['Ventas','Compras','Bancos','Tributación','Contabilidad']},
+ 'ERP Colegios':{base:[...catalog.base,'Carga de estudiantes y representantes'],contable:catalog.contable,cap:[...catalog.cap,'Gestión de cartera estudiantil'],modules:['Ventas','Compras','Bancos','Tributación','Contabilidad','Cartera estudiantil']},
+ 'Tesorería Colegios':{base:[...pick('base',[0,1,2,3]),'Carga de estudiantes y representantes','Configuración de rubros y pensiones'],contable:['Saldos iniciales de cartera estudiantil'],cap:['Emisión de rubros y pensiones','Cobros y cartera estudiantil'],modules:['Tesorería']},
+ 'Facturación':{base:pick('base',[0,1,2,3,5,6,8]),contable:[],cap:['Emisión de comprobantes electrónicos'],modules:['Facturación electrónica']},
+ 'Nómina':{base:[...pick('base',[0,1,2]),'Plantilla de empleados','Configuración de rubros de nómina'],contable:['Saldos y acumulados de nómina'],cap:['Procesamiento de nómina','Roles y reportes'],modules:['Nómina']},
+ 'SAP / Timbrado':{base:['Datos fiscales de la empresa','Usuarios responsables','Certificados de timbrado','Datos para la integración'],contable:[],cap:['Timbrado y consulta de comprobantes'],modules:['Timbrado de facturas y/o nómina']},
+ 'Activos Fijos':{base:['Plantilla de activos fijos'],contable:['Saldos iniciales de activos fijos y depreciación acumulada'],cap:['Gestión y depreciación de activos fijos'],modules:['Activos Fijos']},
+ 'Importaciones':{base:['Información de proveedores del exterior'],contable:[],cap:['Registro y liquidación de importaciones'],modules:['Importaciones']},
+ 'Personalizada':{base:[],contable:[],cap:[],modules:[]}
+};
+const statuses=['Pendiente','En proceso','Listo','No aplica'];
+const $=id=>document.getElementById(id);
+const sidebarKey=key+'-sidebar';
+function setSidebar(expanded){
+ $('sidebar').hidden=!expanded;
+ $('workspace').classList.toggle('sidebar-hidden',!expanded);
+ $('toggleSidebar').setAttribute('aria-expanded',String(expanded));
+ $('toggleSidebar').textContent=expanded?'Ocultar panel':'Mostrar panel';
+}
+let sidebarExpanded=true;
+try{sidebarExpanded=localStorage.getItem(sidebarKey)!=='hidden'}catch{}
+setSidebar(sidebarExpanded);
+$('toggleSidebar').addEventListener('click',()=>{
+ sidebarExpanded=!sidebarExpanded;
+ setSidebar(sidebarExpanded);
+ try{localStorage.setItem(sidebarKey,sidebarExpanded?'visible':'hidden')}catch{}
+});
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const lines=v=>esc(v).replace(/\r?\n/g,'<br>');
+const id=()=>globalThis.crypto?.randomUUID?.()??Date.now().toString(36)+Math.random().toString(36).slice(2);
+const row=name=>({name,date:'',status:'Pendiente',note:'',priority:false});
+const contactDefaults={
+ login:'https://pymes.sae-cloud.com/#/login',
+ support:'+593 98 154 2460',
+ hours:'De lunes a viernes, en horario de 09:00 a 13:00 y de 14:00 a 17:30.'
+};
+function fillContactDefaults(record){
+ if(record.contactDefaultsApplied)return;
+ for(const [field,value] of Object.entries(contactDefaults)){
+ if(!record[field]?.trim())record[field]=value;
+ }
+ record.contactDefaultsApplied=true;
+}
+const blank=()=>({id:id(),company:'',tax:'',contact:'',to:'',cc:'',solution:'',package:'',contractedUsers:'',modules:'',agent:'Ivana Masache',meeting:'',cutoff:'',recording:'',...contactDefaults,admin:'',contactDefaultsApplied:true,notes:'',materials:'',base:[],contable:[],cap:[]});
+let db={records:{},custom:{},active:''};
+try{const saved=localStorage.getItem(key);if(saved)db=JSON.parse(saved)}catch{}
+Object.values(db.records).forEach(fillContactDefaults);
+let files=[];
+const catalogFields=['modules',...Object.keys(groups)];
+const isRetired=name=>(db.retired??[]).includes(name);
+const catalogNames=()=>[...new Set([...Object.keys(templates),...Object.keys(db.custom)])];
+const template=name=>Object.hasOwn(db.custom,name)?db.custom[name]:Object.hasOwn(templates,name)?templates[name]:null;
+const normalize=value=>value.trim().replace(/\s+/g,' ').toLocaleLowerCase('es');
+const splitLines=value=>value.split(/\r?\n/).map(v=>v.trim()).filter(Boolean);
+function unique(items){
+ const names=new Map();
+ for(const item of items){const key=normalize(item);if(key&&!names.has(key))names.set(key,item.trim())}
+ return [...names.values()];
+}
+const selectedSolutions=d=>d.solutions??(d.solution?[d.solution]:[]);
+const checkedSolutions=()=>Array.from($('editor').querySelectorAll('[data-solution]:checked'),el=>el.value);
+const validUserCount=value=>/^[1-9]\d*$/.test(value)&&Number.isSafeInteger(Number(value));
+function packageDetail(d,names=selectedSolutions(d)){
+ const parts=names.length?[...names]:d.package.trim()?[d.package.trim()]:[];
+ if(validUserCount(d.contractedUsers)){
+ const count=Number(d.contractedUsers);
+ parts.push(count+' '+(count===1?'usuario':'usuarios'));
+ }
+ return parts.join(' + ');
+}
+function renderPackage(names){
+ $('packageDetail').value=packageDetail(data,names);
+}
+const generated=(names,field)=>unique(names.flatMap(name=>template(name)?.[field]??[]));
+function applySolutions(d,names){
+ const previous=d.generated??Object.fromEntries(catalogFields.map(f=>[f,generated(selectedSolutions(d),f)]));
+ const next={};
+ for(const f of catalogFields){
+ next[f]=generated(names,f);
+ const before=new Set(previous[f].map(normalize));
+ const wanted=new Set(next[f].map(normalize));
+ if(f==='modules'){
+ const kept=splitLines(d.modules).filter(name=>!before.has(normalize(name))||wanted.has(normalize(name)));
+ d.modules=unique([...next[f],...kept]).join('\n');
+ continue;
+ }
+ const kept=d[f].filter(r=>{
+ const key=normalize(r.name);
+ return !before.has(key)||wanted.has(key)||r.date||r.time||r.meetingUrl||r.note||r.priority||r.status!=='Pendiente';
+ });
+ const byName=new Map();
+ for(const entry of kept){
+ const key=normalize(entry.name);
+ if(!byName.has(key))byName.set(key,[]);
+ byName.get(key).push(entry);
+ }
+ const ordered=next[f].flatMap(name=>byName.get(normalize(name))??[row(name)]);
+ d[f]=[...ordered,...kept.filter(entry=>!wanted.has(normalize(entry.name)))];
+ }
+ d.solutions=names;d.solution=names.join(' + ');d.generated=next;
+}
+function fresh(){
+ const d=blank();db.records[d.id]=d;db.active=d.id;return d;
+}
+let catalogOpen=false;
+let data=Object.hasOwn(db.records,db.active)?db.records[db.active]:Object.values(db.records).at(-1)??null;
+let timer;
+function message(value){$('notice').textContent=value;clearTimeout(timer);timer=setTimeout(()=>$('notice').textContent='',6500)}
+function save(){try{localStorage.setItem(key,JSON.stringify(db));return true}catch{message('No se pudo guardar en el navegador. Exporta un respaldo.');return false}}
+const validTime=value=>/^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+function displayDate(v){return /^\d{4}-\d{2}-\d{2}$/.test(v)?v.split('-').reverse().join('/'):''}
+function safeUrl(value){try{const u=new URL(value);return ['http:','https:'].includes(u.protocol)?u.href:''}catch{return ''}}
+function subject(){return ['Implementación SAE Cloud',data.tax.trim(),data.company.trim()].filter(Boolean).join(' · ')}
+const field=(name,label,type='text',placeholder='')=>'<label>'+label+'<input data-field="'+name+'" type="'+type+'" value="'+esc(data[name])+'" placeholder="'+esc(placeholder)+'"></label>';
+const area=(name,label,hint='')=>'<label class="full">'+label+'<textarea rows="2" data-field="'+name+'" placeholder="'+esc(hint)+'">'+esc(data[name])+'</textarea></label>';
+function drawClients(){
+ $('title').textContent=data?(data.company.trim()||'Sin nombre'):'Implementaciones';
+ $('clients').replaceChildren(...Object.values(db.records).reverse().map(d=>{
+ const b=document.createElement('button');b.textContent=d.company.trim()||'Sin nombre';b.setAttribute('aria-current',String(!catalogOpen&&d===data));b.addEventListener('click',()=>selectRecord(d));return b;
+ }));
+}
+function selectRecord(d){
+ const switching=d!==data;
+ if(switching){files=[];data=d;db.active=d.id;save()}
+ if(switching||catalogOpen){catalogOpen=false;draw()}
+}
+function editCatalog(name){
+ const t=template(name);
+ $('catalogName').value=name;
+ $('catalogName').readOnly=Boolean(t);
+ for(const f of catalogFields)$('catalog-'+f).value=(t?.[f]??[]).join('\n');
+ $('retireSolution').hidden=!t||isRetired(name);
+ $('restoreSolution').hidden=!t||!isRetired(name);
+ $('storeSolution').hidden=isRetired(name);
+}
+function drawCatalog(name){
+ $('title').textContent='Catálogo de soluciones';
+ const labels={modules:'Módulos para el correo',base:'Requerimientos de información',contable:'Saldos iniciales',cap:'Capacitaciones'};
+ $('editor').innerHTML='<section class="entry-section"><h2>Soluciones y módulos adicionales</h2>'+
+ '<p>Escribe un elemento por línea, de arriba hacia abajo en el orden deseado. Para mover un elemento, coloca el cursor en su línea y usa Subir o Bajar.</p>'+
+ '<div class="grid"><label>Selecciona una solución<select id="catalogSelect"><option value="">Nueva solución o módulo</option>'+
+ catalogNames().map(n=>'<option value="'+esc(n)+'">'+esc(n)+(isRetired(n)?' (retirada)':'')+'</option>').join('')+'</select></label>'+
+ '<label>Nombre de la solución o módulo<input id="catalogName" placeholder="Ej. Punto de Venta"></label>'+
+ catalogFields.map(f=>'<div><label>'+labels[f]+'<textarea rows="6" id="catalog-'+f+'"></textarea></label>'+
+ '<div class="bar"><button data-move="'+f+'" data-direction="-1">Subir</button><button data-move="'+f+'" data-direction="1">Bajar</button></div></div>').join('')+
+ '</div><div class="actions"><button class="primary" id="storeSolution">Guardar solución</button>'+
+ '<button class="danger" id="retireSolution" hidden>Retirar del catálogo</button><button id="restoreSolution" hidden>Restaurar solución</button></div></section>';
+ $('catalogSelect').value=name;
+ editCatalog(name);
+}
+function moveCatalogLine(field,direction){
+ const input=$('catalog-'+field);
+ const items=input.value.split('\n');
+ const index=input.value.slice(0,input.selectionStart).split('\n').length-1;
+ const target=index+direction;
+ if(target<0||target>=items.length)return;
+ [items[index],items[target]]=[items[target],items[index]];
+ input.value=items.join('\n');
+ const start=items.slice(0,target).reduce((sum,item)=>sum+item.length+1,0);
+ input.focus();
+ input.setSelectionRange(start,start+items[target].length);
+}
+function solutionChoices(){
+ const selected=selectedSolutions(data);
+ const names=[...new Set([...catalogNames().filter(n=>!isRetired(n)||selected.includes(n)),...selected])];
+ return '<section class="entry-section"><h2>Soluciones contratadas</h2><p>Selecciona las soluciones y módulos adicionales del cliente.</p><div class="choices">'+
+ names.map(n=>'<label><input type="checkbox" data-solution value="'+esc(n)+'" '+(selected.includes(n)?'checked':'')+'>'+esc(n)+(isRetired(n)?' (retirada)':'')+'</label>').join('')+
+ '</div><button class="primary" id="apply">Cargar requerimientos</button></section>';
+}
+function section(g){
+ const training=g==='cap';
+ const headers='<div class="row-head" aria-hidden="true"><span>Actividad</span><span>Fecha</span>'+(training?'<span>Hora</span><span>Enlace</span>':'')+'<span>Estado</span><span>Comentario</span><span>Prioridad</span></div>';
+ const items=data[g].map((r,i)=>'<div class="row" data-group="'+g+'" data-index="'+i+'">'+
+ '<input aria-label="Actividad" data-row="name" value="'+esc(r.name)+'">'+
+ '<input aria-label="Fecha" data-row="date" type="date" value="'+esc(r.date)+'">'+
+ (training?'<input aria-label="Hora" data-row="time" type="time" value="'+esc(r.time)+'">'+
+ '<input aria-label="Enlace de capacitación" data-row="meetingUrl" type="url" placeholder="https://…" value="'+esc(r.meetingUrl)+'">':'')+
+ '<select aria-label="Estado" data-row="status">'+statuses.map(s=>'<option '+(s===r.status?'selected':'')+'>'+s+'</option>').join('')+'</select>'+
+ '<textarea aria-label="Comentario" data-row="note" rows="1">'+esc(r.note)+'</textarea>'+
+ '<input aria-label="Prioridad" type="checkbox" data-row="priority" '+(r.priority?'checked':'')+'>'+
+ (training?'<div class="training-actions">'+
+ '<button data-calendar="'+i+'" title="Agendar en Google Calendar" aria-label="Agendar en Google Calendar">📅</button>'+
+ '<button data-capture-meet="'+i+'" title="Pegar enlace o invitación de Google Meet" aria-label="Pegar enlace o invitación de Google Meet">🔗</button>'+
+ '<button data-remove="'+i+'" title="Quitar capacitación" aria-label="Quitar capacitación">🗑️</button></div>':
+ '<button data-remove="'+i+'" aria-label="Quitar actividad">Quitar</button>')+'</div>').join('');
+ return '<section class="entry-section"><div class="heading"><h2>'+groups[g]+'</h2><button data-add="'+g+'">+ Agregar</button></div>'+
+ (training&&items?'<p class="muted">Agrega Google Meet en Calendar y usa el icono de enlace para guardar el enlace en la ficha.</p>':'')+
+ (items?'<div class="rows'+(training?' training-rows':'')+'">'+headers+items+'</div>':'<p class="muted">Sin actividades registradas.</p>')+'</section>';
+}
+function draw(){
+ drawClients();
+ $('solutions').setAttribute('aria-current',String(catalogOpen));
+ if(catalogOpen){drawCatalog('');return}
+ if(!data){
+ $('editor').innerHTML='<section><h2>Sin implementaciones</h2><p>Crea una ficha o importa un respaldo para continuar.</p></section>';
+ return;
+ }
+ $('editor').innerHTML='<section class="entry-section"><h2>Ficha del cliente</h2><div class="grid">'+
+ field('company','Empresa / Institución')+field('tax','RUC / Identificación fiscal')+field('contact','Nombre del contacto')+field('agent','Agente de implementación')+
+ field('to','Para (correos separados por comas)','text')+field('cc','CC (opcional)','text')+
+ '<label>Usuarios contratados<input type="number" min="1" step="1" inputmode="numeric" data-field="contractedUsers" value="'+esc(data.contractedUsers)+'"></label>'+
+ '<label>Detalle del paquete contratado<input id="packageDetail" readonly placeholder="Selecciona las soluciones contratadas"></label>'+
+ field('meeting','Fecha de reunión inicial','date')+field('cutoff','Fecha de corte de saldos','date')+
+ area('modules','Módulos contratados (uno por línea)')+'</div><div class="actions"><button id="solutionFromRecord">Crear solución desde esta ficha</button><button id="deleteRecord" class="danger">Eliminar ficha</button></div></section>'+
+ solutionChoices()+
+ Object.keys(groups).map(section).join('')+
+ '<section class="entry-section"><h2>Materiales y seguimiento</h2><div class="grid">'+field('recording','Enlace a la grabación','url')+field('login','Enlace de acceso a SAE Cloud','url')+
+ field('admin','Usuario administrador (sin contraseña)')+field('support','Número de WhatsApp o enlace de soporte','text','Ej. +593 99 123 4567')+
+ field('hours','Horario de atención')+area('notes','Acuerdos y comentarios para el cliente','Ej. Confirmar horario de capacitación después de recibir los archivos.')+
+ area('materials','Enlaces a archivos (uno por línea)','Ej. Plantilla de clientes | https://...')+
+ '<label class="full">Adjuntos desde tu equipo<input type="file" id="files" multiple></label><div class="full attachments" id="fileNames"></div></div></section>'+
+ '<section class="entry-section"><h2>Correo de seguimiento</h2><p><strong>Asunto</strong> <span id="subject"></span></p><div class="bar"><button id="copy" class="primary">Copiar correo con formato</button><button id="gmail">Abrir Gmail</button><button id="eml">Descargar correo con adjuntos (.eml)</button></div><div class="preview" id="preview"></div></section>';
+ renderMail();
+}
+function link(url,label){const u=safeUrl(url);return u?'<a style="color:#086a93;font-weight:bold" href="'+esc(u)+'">'+esc(label)+'</a>':''}
+function mail(){
+ const box=(name,body)=>body?'<h2 style="font-size:17px;margin:24px 0 8px;color:#164466;padding-bottom:5px;border-bottom:1px solid #c5d5e2">'+name+'</h2>'+body:'';
+ const list=items=>items.length?'<ul style="margin:6px 0;padding-left:22px">'+items.map(x=>'<li style="margin:0;padding:1px 0;line-height:1.35">'+x+'</li>').join('')+'</ul>':'';
+ const details=(r,group,when,sharedUrl)=>{
+ const status=r.status==='Pendiente'?(when?'':' · '+(group==='cap'?'Por agendar':'Fecha por confirmar')):' · '+(r.status==='Listo'?'<strong>Listo</strong>':esc(r.status));
+ const meetingLink=group==='cap'&&!sharedUrl?link(r.meetingUrl,'Unirse a la capacitación'):'';
+ return status+(meetingLink?' · '+meetingLink:'')+(r.priority&&r.status!=='Listo'?' · <strong style="color:#9a4312">Prioritario</strong>':'')+(r.note.trim()?'<br>'+lines(r.note):'');
+ };
+ const schedule=group=>{
+ const entries=[];
+ const sessions=new Map();
+ for(const r of data[group]){
+ if(!r.name.trim()||r.status==='No aplica')continue;
+ const when=displayDate(r.date);
+ const time=group==='cap'&&validTime(r.time)?r.time:'';
+ const scheduleText=[when,time].filter(Boolean).join(' a las ');
+ const key=when&&time?scheduleText:'';
+ if(key&&sessions.has(key)){
+ sessions.get(key).rows.push(r);
+ continue;
+ }
+ const entry={when,scheduleText,rows:[r]};
+ entries.push(entry);
+ if(key)sessions.set(key,entry);
+ }
+ return list(entries.map(({when,scheduleText,rows})=>{
+ const date=scheduleText?' · '+scheduleText:'';
+ const name=r=>'<strong>'+esc(r.name)+'</strong>';
+ if(rows.length===1)return name(rows[0])+date+details(rows[0],group,when);
+ const names=new Intl.ListFormat('es').formatToParts(rows.map(r=>r.name)).map(part=>
+ part.type==='element'?'<strong>'+esc(part.value)+'</strong>':esc(part.value)
+ ).join('');
+ const firstUrl=safeUrl(rows[0].meetingUrl);
+ const sharedUrl=firstUrl&&rows.every(r=>safeUrl(r.meetingUrl)===firstUrl)?firstUrl:'';
+ const sharedLink=sharedUrl?' · '+link(sharedUrl,'Unirse a la capacitación'):'';
+ const notes=rows.map(r=>({r,detail:details(r,group,when,sharedUrl)})).filter(item=>item.detail);
+ return names+date+sharedLink+notes.map(({r,detail})=>'<br>'+name(r)+detail).join('');
+ }));
+ };
+ const resources=data.materials.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).map(s=>{
+ const split=s.indexOf('|');
+ return split<0?link(s,s):link(s.slice(split+1).trim(),s.slice(0,split).trim()||'Abrir archivo');
+ }).filter(Boolean);
+ const rec=link(data.recording,'Ver grabación de la reunión');
+ if(rec)resources.unshift(rec);
+ for(const file of files)resources.push(esc(file.name)+' (adjunto)');
+ const p=s=>'<p style="margin:0 0 12px">'+s+'</p>';
+ const packageName=packageDetail(data);
+ const modules=list(data.modules.split(/\r?\n/).map(x=>x.trim()).filter(Boolean).map(esc));
+ const meeting=displayDate(data.meeting);
+ const cutoff=displayDate(data.cutoff);
+ const login=link(data.login,'Ingresar a SAE Cloud');
+ const access=[login?'<strong>URL:</strong> '+login:'',data.admin.trim()?'<strong>Usuario administrador:</strong> '+esc(data.admin.trim()):''].filter(Boolean);
+ const contact=data.support.trim();
+ const phone=contact.replace(/[ .()-]/g,'');
+ const whatsapp=/^\+[1-9]\d{6,14}$/.test(phone)?link('https://wa.me/'+phone.slice(1),contact):esc(contact);
+ const supportContact=link(contact,'Contactar al equipo de implementación')||(contact?'<strong>WhatsApp:</strong> '+whatsapp:'');
+ const hours=data.hours.trim();
+ const support=[supportContact,hours?'<strong>Horario de atención:</strong> '+lines(hours):''].filter(Boolean);
+ return '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#ffffff" style="width:100%;margin:0;background-color:#ffffff;text-align:left;color:#18324b;font:15px/1.55 Arial,sans-serif;border:4px solid #edf3f8;border-radius:12px"><tr><td bgcolor="#12334f" style="background-color:#12334f;color:#fff;padding:22px 26px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%"><tr><td valign="middle" style="color:#ffffff"><div style="font-weight:bold;color:#95e2f2">SAE Cloud</div><div style="font-size:24px;font-weight:bold">Plan de Implementación</div>'+
+ (data.company.trim()?'<div>'+esc(data.company)+'</div>':'')+'</td>'+
+ '<td align="right" valign="middle" width="112" style="width:112px;padding-left:12px"><img src="https://sae-cloud.com/wp-content/uploads/2023/07/claro.png" alt="Logo SAE Cloud" width="112" height="55" style="display:block;width:112px;height:auto;border:0;color:#ffffff"></td></tr></table>'+
+ '</td></tr><tr><td bgcolor="#ffffff" style="background-color:#ffffff;padding:24px 26px">'+
+ p('Hola'+(data.contact.trim()?', '+esc(data.contact):'')+'.')+
+ p('Mi nombre es <strong>'+esc(data.agent.trim()||'Ivana Masache')+'</strong> y seré su <strong>Agente de Implementación.</strong> Es un placer darle la bienvenida a <strong>SAE Cloud</strong>, su nueva solución para una gestión contable eficiente y práctica. Estamos emocionados de que forme parte de nuestra comunidad.')+
+ p('Gracias por participar en la reunión inicial'+(meeting?' del <strong>'+meeting+'</strong>':'')+'. Le comparto el alcance de la implementación y los próximos pasos que acordamos.')+
+ box('Paquete Contratado',(packageName?p('<strong>'+esc(packageName)+'</strong>'):'')+modules)+
+ box('Información Base y Configuración',schedule('base'))+
+ box('Información Contable', (cutoff?p('Fecha de corte de saldos · <strong>'+cutoff+'</strong>'):'')+schedule('contable'))+
+ box('Capacitaciones',schedule('cap'))+
+ box('Acuerdos y Próximos Pasos',list(splitLines(data.notes).map(esc)))+
+ box('Grabación y Archivos',list(resources))+
+ box('Acceso al Sistema',list(access))+
+ box('Canal de Soporte en Implementación',list(support))+
+ '<p style="margin:36px 0 0">Agradecemos su confianza. Si tiene alguna inquietud, no dude en contactarme. Estoy aquí para ayudarle.</p>'+
+ '</td></tr></table>';
+}
+function renderMail(){
+ renderPackage(checkedSolutions());
+ $('subject').textContent=subject();
+ $('preview').innerHTML=mail();
+ $('fileNames').innerHTML=files.length?'<ul>'+files.map((file,index)=>
+ '<li><span>'+esc(file.name)+'</span><button type="button" data-remove-file="'+index+'" aria-label="Quitar '+esc(file.name)+'">Quitar</button></li>'
+ ).join('')+'</ul>':'<small>Puedes agregar archivos de varias carpetas. Los adjuntos se mantienen mientras trabajas en esta ficha.</small>';
+}
+function download(name,content,type){
+ const url=URL.createObjectURL(new Blob([content],{type}));
+ const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function encodeBytes(bytes){
+ let result='';
+ for(let i=0;i<bytes.length;i+=57)result+=btoa(String.fromCharCode(...bytes.subarray(i,i+57)))+'\r\n';
+ return result;
+}
+function mimeText(value){return encodeBytes(new TextEncoder().encode(value))}
+function encodedSubject(value){
+ const words=[];let chunk='';const encoder=new TextEncoder();
+ for(const char of value){if(encoder.encode(chunk+char).length>42){words.push(chunk);chunk=''}chunk+=char}
+ if(chunk)words.push(chunk);
+ return words.map(word=>'=?UTF-8?B?'+mimeText(word).trim()+'?=').join('\r\n ');
+}
+async function exportMail(){
+ const attachmentFiles=[...files];
+ const html=mail();
+ const headers=[['To',data.to],['Cc',data.cc]].filter(x=>x[1].trim()).map(([k,v])=>k+': '+v.trim().replace(/[\r\n]/g,' '));
+ const boundary='sae-'+id();const parts=[
+ ...headers,'Subject: '+encodedSubject(subject()),'MIME-Version: 1.0',
+ 'X-Unsent: 1','Content-Type: multipart/mixed; boundary="'+boundary+'"','',
+ '--'+boundary,'Content-Type: text/html; charset=UTF-8','Content-Transfer-Encoding: base64','',mimeText(html).trim()
+ ];
+ for(const file of attachmentFiles){
+ const name=encodeURIComponent(file.name.replace(/[\r\n]/g,' ')).replace(/['()*]/g,c=>'%'+c.charCodeAt(0).toString(16));
+ const type=/^[\w.+-]+\/[\w.+-]+$/.test(file.type)?file.type:'application/octet-stream';
+ parts.push('--'+boundary,'Content-Type: '+type,"Content-Disposition: attachment; filename*=UTF-8''"+name,
+ 'Content-Transfer-Encoding: base64','',encodeBytes(new Uint8Array(await file.arrayBuffer())).trim());
+ }
+ parts.push('--'+boundary+'--','');
+ download('Seguimiento_SAE_Cloud.eml',parts.join('\r\n'),'message/rfc822');
+}
+function trainingSession(record,training){
+ return record.cap.filter(r=>r.status!=='No aplica'&&r.name.trim()&&r.date===training.date&&r.time===training.time);
+}
+function calendarUrl(record,training,minutes){
+ const session=trainingSession(record,training);
+ const names=new Intl.ListFormat('es').format(session.map(r=>r.name.trim()));
+ const title=['Cap. '+names,record.company.trim()].filter(Boolean).join(' - ');
+ // Use UTC only for arithmetic on local clock values. Calendar receives the Ecuador time zone separately.
+ const start=new Date(training.date+'T'+training.time+':00Z');
+ const end=new Date(start.getTime()+minutes*60000);
+ const stamp=date=>date.toISOString().slice(0,19).replace(/[-:]/g,'');
+ const details=session.map(r=>r.name.trim()).join('\n');
+ const params=new URLSearchParams({action:'TEMPLATE',text:title,dates:stamp(start)+'/'+stamp(end),ctz:'America/Guayaquil',details});
+ const guests=new Map();
+ for(const value of [record.to,record.cc].join(',').split(/[,;\n]+/)){
+ const email=value.trim();
+ if(/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)&&!guests.has(email.toLowerCase()))guests.set(email.toLowerCase(),email);
+ }
+ if(guests.size)params.set('add',[...guests.values()].join(','));
+ return 'https://calendar.google.com/calendar/render?'+params;
+}
+function openTrainingCalendar(training){
+ if(training.status==='No aplica'||!training.name.trim()||!displayDate(training.date)||!validTime(training.time)){
+ message('Ingresa el tema, la fecha y la hora de una capacitación que aplique.');
+ return;
+ }
+ const duration=prompt('Duración de la capacitación en minutos (hora de Ecuador)', '60');
+ if(duration===null)return;
+ const minutes=Number(duration);
+ if(!Number.isInteger(minutes)||minutes<1||minutes>1440){
+ message('Ingresa una duración entre 1 y 1440 minutos.');
+ return;
+ }
+ window.open(calendarUrl(data,training,minutes),'_blank','noopener,noreferrer');
+}
+function extractMeetUrl(text){
+ const url=text.match(/https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}(?:[?#][^\s<>"'\u200e\u200f\u202a-\u202e\u2066-\u2069]*)?(?=$|[\s<>"').,\u200e\u200f\u202a-\u202e\u2066-\u2069])/i);
+ return url?safeUrl(url[0].replace(/[),.]+$/,'')):'';
+}
+$('cancelMeet').onclick=()=>$('meetDialog').close();
+function captureTrainingMeet(training){
+ const dialog=$('meetDialog');
+ const input=$('meetText');
+ const error=$('meetError');
+ input.value=training.meetingUrl??'';
+ error.hidden=true;
+ $('meetForm').onsubmit=e=>{
+ e.preventDefault();
+ const url=extractMeetUrl(input.value);
+ if(!url){
+ error.textContent='No se encontró un enlace válido de Google Meet.';
+ error.hidden=false;
+ input.focus();
+ return;
+ }
+ const session=displayDate(training.date)&&validTime(training.time)?trainingSession(data,training):[];
+ for(const row of session.length?session:[training])row.meetingUrl=url;
+ if(save()){dialog.close();draw();message('Enlace de Google Meet guardado.')}
+ };
+ dialog.showModal();
+ input.focus();
+ input.select();
+}
+function copyText(){
+ const container=$('preview');
+ const range=document.createRange();range.selectNode(container.firstElementChild);
+ const selection=getSelection();selection.removeAllRanges();selection.addRange(range);
+ if(document.execCommand('copy')){selection.removeAllRanges();message('Correo copiado. Pégalo en Gmail y agrega los adjuntos si corresponde.')}
+ else message('El correo quedó seleccionado. Usa Ctrl+C o Cmd+C para copiarlo.');
+}
+$('editor').addEventListener('input',e=>{
+ const el=e.target;
+ if(el.dataset.field){data[el.dataset.field]=el.value;if(el.dataset.field==='company')drawClients()}
+ else if(el.dataset.row){
+ const {group,index}=el.closest('.row').dataset;
+ data[group][index][el.dataset.row]=el.type==='checkbox'?el.checked:el.value;
+ }else return;
+ save();renderMail();
+});
+$('editor').addEventListener('change',e=>{
+ if(Object.hasOwn(e.target.dataset,'solution'))renderPackage(checkedSolutions());
+ if(e.target.id==='catalogSelect')editCatalog(e.target.value);
+ if(e.target.id==='files'){
+ files.push(...e.target.files);
+ e.target.value='';
+ renderMail();
+ }
+});
+$('editor').addEventListener('click',async e=>{
+ const b=e.target.closest('button');if(!b)return;
+ if(b.dataset.captureMeet!==undefined){captureTrainingMeet(data.cap[Number(b.dataset.captureMeet)]);return}
+ if(b.dataset.calendar!==undefined){openTrainingCalendar(data.cap[Number(b.dataset.calendar)]);return}
+ if(b.dataset.removeFile!==undefined){
+ files.splice(Number(b.dataset.removeFile),1);
+ renderMail();
+ const buttons=$('fileNames').querySelectorAll('button');
+ (buttons[Number(b.dataset.removeFile)]??buttons[buttons.length-1]??$('files')).focus();
+ return;
+ }
+ if(b.dataset.add){data[b.dataset.add].push(row(''));save();draw();const items=document.querySelectorAll('[data-group="'+b.dataset.add+'"] [data-row="name"]');items[items.length-1]?.focus()}
+ if(b.dataset.remove!==undefined){const g=b.closest('.row').dataset.group;data[g].splice(Number(b.dataset.remove),1);save();draw()}
+ if(b.id==='deleteRecord'){
+ const name=data.company.trim()||data.tax.trim()||data.contact.trim()||'Sin nombre';
+ if(!confirm('¿Eliminar la ficha «'+name+'» y sus actividades? Esta acción es permanente.'))return;
+ const previous={...db,records:{...db.records}};
+ delete db.records[data.id];
+ const next=Object.values(db.records).at(-1)??null;
+ db.active=next?.id??'';
+ if(!save()){db=previous;return}
+ files=[];data=next;draw();message('Ficha eliminada.');
+ return;
+ }
+ if(b.id==='apply'){
+ const names=checkedSolutions();
+ applySolutions(data,names);
+ if(save()){draw();message('Requerimientos y capacitaciones actualizados.')}
+ }
+ if(b.id==='solutionFromRecord'){
+ catalogOpen=true;draw();
+ $('catalog-modules').value=data.modules;
+ for(const f in groups)$('catalog-'+f).value=data[f].map(r=>r.name.trim()).filter(Boolean).join('\n');
+ $('catalogName').focus();
+ }
+ if(b.dataset.move)moveCatalogLine(b.dataset.move,Number(b.dataset.direction));
+ if(b.id==='retireSolution'||b.id==='restoreSolution'){
+ const name=$('catalogSelect').value;
+ if(!template(name))return;
+ const retire=b.id==='retireSolution';
+ if(retire&&!confirm('¿Retirar «'+name+'»? Dejará de aparecer como opción para nuevos clientes.'))return;
+ const previous=db.retired;
+ db.retired=retire?[...(previous??[]),name]:(previous??[]).filter(item=>item!==name);
+ if(save()){
+ drawCatalog(name);
+ message(retire?'Solución retirada del catálogo activo.':'Solución restaurada.');
+ }else db.retired=previous;
+ }
+ if(b.id==='storeSolution'){
+ const editing=$('catalogSelect').value;
+ const name=$('catalogName').value.trim();
+ if(!name){message('Escribe el nombre de la solución o módulo.');return}
+ if(!editing&&catalogNames().some(n=>normalize(n)===normalize(name))){
+ message('Ese nombre ya existe. Selecciónalo en el catálogo para editarlo.');return;
+ }
+ const t=Object.fromEntries(catalogFields.map(f=>[f,unique(splitLines($('catalog-'+f).value))]));
+ Object.defineProperty(db.custom,name,{value:t,enumerable:true,configurable:true,writable:true});
+ if(save()){drawCatalog(name);message('Solución guardada en el catálogo.')}
+ }
+ if(b.id==='copy'){
+ try{
+ if(!navigator.clipboard?.write||!globalThis.ClipboardItem){copyText();return}
+ const item=new ClipboardItem({'text/html':new Blob([mail()],{type:'text/html'}),'text/plain':new Blob([$('preview').innerText],{type:'text/plain'})});
+ await navigator.clipboard.write([item]);message('Correo copiado. Pégalo en Gmail y agrega los adjuntos si corresponde.');
+ }catch{copyText()}
+ }
+ if(b.id==='gmail'){
+ const params=new URLSearchParams({view:'cm',fs:'1',to:data.to,cc:data.cc,su:subject()});
+ window.open('https://mail.google.com/mail/?'+params,'_blank','noopener,noreferrer');
+ }
+ if(b.id==='eml'){try{await exportMail();message('Correo descargado.')}catch{message('No se pudo generar el correo. Vuelve a elegir los adjuntos e inténtalo de nuevo.')}}
+});
+$('new').onclick=()=>selectRecord(fresh());
+$('solutions').onclick=()=>{catalogOpen=true;draw()};
+$('backup').onclick=()=>download('Respaldo_Implementaciones_SAE.json',JSON.stringify(db,null,2),'application/json');
+function validate(snapshot){
+ const object=v=>v&&typeof v==='object'&&!Array.isArray(v);
+ if(!object(snapshot?.records)||!object(snapshot.custom))return false;
+ const fields=Object.keys(blank()).filter(k=>!(k in groups)&&k!=='contractedUsers'&&k!=='contactDefaultsApplied');
+ const stringList=v=>Array.isArray(v)&&v.every(item=>typeof item==='string');
+ if(snapshot.retired!==undefined&&!stringList(snapshot.retired))return false;
+ return Object.entries(snapshot.records).every(([k,d])=>object(d)&&d.id===k&&/^[a-zA-Z0-9-]+$/.test(k)&&fields.every(f=>typeof d[f]==='string')&&
+ (d.contractedUsers===undefined||typeof d.contractedUsers==='string')&&
+ (d.solutions===undefined||stringList(d.solutions))&&(d.generated===undefined||(object(d.generated)&&catalogFields.every(f=>stringList(d.generated[f]))))&&
+ Object.keys(groups).every(g=>Array.isArray(d[g])&&d[g].every(r=>object(r)&&['name','date','note'].every(f=>typeof r[f]==='string')&&statuses.includes(r.status)&&(r.time===undefined||r.time===''||validTime(r.time))&&(r.meetingUrl===undefined||typeof r.meetingUrl==='string')&&typeof r.priority==='boolean')))&&
+ Object.values(snapshot.custom).every(t=>object(t)&&['modules',...Object.keys(groups)].every(g=>Array.isArray(t[g])&&t[g].every(v=>typeof v==='string')));
+}
+$('import').onclick=()=>$('importFile').click();
+$('importFile').onchange=async e=>{
+ const file=e.target.files[0];e.target.value='';if(!file)return;
+ try{
+ const snapshot=JSON.parse(await file.text());
+ if(!validate(snapshot)){message('El archivo no es un respaldo válido de esta aplicación.');return}
+ const incoming=Object.values(snapshot.records);
+ for(const d of incoming){
+ fillContactDefaults(d);
+ const existing=db.records[d.id];
+ if(existing && JSON.stringify(existing)===JSON.stringify(d))continue;
+ if(existing)d.id=id();
+ db.records[d.id]=d;
+ }
+ db.custom={...snapshot.custom,...db.custom};
+ db.retired=[...new Set([...(db.retired??[]),...(snapshot.retired??[])])];
+ save();
+ if(incoming.length)selectRecord(db.records[incoming[0].id]);else draw();
+ message('Respaldo importado. Se conservaron los registros anteriores.');
+ }catch{message('No se pudo leer el respaldo.')}
+};
+draw();
+</script></body></html>
